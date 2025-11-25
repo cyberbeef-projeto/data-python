@@ -6,11 +6,11 @@ import time
 import requests
 
 DB_CONFIG = {
-    'host': '127.0.0.1',
+    'host': 'localhost',
     'user': 'aluno',
-    'password': 'Sptech#2024',
+    'password': 'sptech',
     'database': 'cyberbeef',
-    'port': 3307
+    'port': 3306
 }
 
 ID_MAQUINA = 1
@@ -22,7 +22,7 @@ SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/T09T4QE09CK/B09UC4HHH36/lW
 # Limites de alerta
 LIMITE_ALERTA = {
     "CPU": 80,
-    "MEMORIA": 85,
+    "RAM": 85,
     "DISCO": 90
 }
 
@@ -135,7 +135,7 @@ def capturar_metricas():
 
     return {
         ("CPU", "%"): cpu_percent,
-        ("MEMORIA", "%"): ram_percent,
+        ("RAM", "%"): ram_percent,
         ("DISCO", "%"): disco_percent
     }
 

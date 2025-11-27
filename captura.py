@@ -7,8 +7,8 @@ import requests
 
 DB_CONFIG = {
     'host': 'localhost',
-    'user': 'root',
-    'password': 'stevejobs',
+    'user': 'aluno',
+    'password': 'sptech',
     'database': 'cyberbeef',
     'port': 3306
 }
@@ -16,7 +16,7 @@ DB_CONFIG = {
 ID_MAQUINA = 1
 INTERVALO = 5  # segundos
 
-SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/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"
+SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/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"
 
 LIMITE_ALERTA = {
     "CPU": 80,
@@ -33,10 +33,8 @@ MAPA_PARAMETROS_FALLBACK = {
 }
 
 def enviar_slack(mensagem: str):
-    """Envia mensagem para Slack e checa resposta HTTP para debug."""
     try:
         resposta = requests.post(SLACK_WEBHOOK_URL, json={"text": mensagem}, timeout=10)
-        # Slack Incoming Webhooks normalmente responde 200 OK
         if resposta.status_code != 200:
             print(f"Slack retornou HTTP {resposta.status_code}: {resposta.text}")
         else:
@@ -56,10 +54,6 @@ def conectar():
 
 
 def registrar_log(id_maquina, tipo_log_db, mensagem):
-    """
-    Insere na tabela log.
-    tipo_log_db deve ser um dos valores permitidos no enum do banco (por ex: 'INFO', 'WARNING', 'ERROR').
-    """
     db = conectar()
     if db is None:
         print("Impossível registrar log: sem conexão com DB.")
@@ -83,10 +77,6 @@ def registrar_log(id_maquina, tipo_log_db, mensagem):
 
 
 def obter_id_parametro(tipo, id_maquina):
-    """
-    Tenta obter idParametro a partir da tabela parametro (nivel = tipo e idMaquina = id_maquina).
-    Se falhar, retorna valor do MAPA_PARAMETROS_FALLBACK se existir.
-    """
     tipo = tipo.strip().upper()
     db = conectar()
     if db is None:
@@ -194,9 +184,6 @@ def inserir_leitura(id_componente, id_maquina, valor, tipo, unidade):
 
 
 def registrar_alerta(id_leitura, id_componente, id_maquina, id_parametro, descricao):
-    """
-    Insere linha na tabela alerta.
-    """
     db = conectar()
     if db is None:
         print("Não foi possível registrar alerta: sem conexão DB.")
@@ -235,27 +222,13 @@ def capturar_metricas():
 
 
 def classificar_valor(tipo, valor):
-    """
-    Retorna tupla (classificacao_texto, nivel_log_db)
-    classificacao_texto -> 'Crítico' / 'Anormal' / 'Normal'
-    nivel_log_db -> 'ERROR' / 'WARNING' / 'INFO' (valores aceitos pelo enum do log)
-    Regras solicitadas:
-      - Crítico: > 90%
-      - Anormal: 85% <= x <= 90%
-      - Normal: < 85%
-    """
-    if valor > 80:
+    if valor >= LIMITE_ALERTA[tipo]:
         return "Crítico", "CRITICO"
-    if 85 <= valor <= 90:
+    else:                                # tudo abaixo vira anormal
         return "Anormal", "ANORMAL"
-    return "Normal", "NORMAL"
 
 
 def verificar_e_tratar_alerta(tipo, valor, id_leitura, id_componente):
-    """
-    Classifica leitura, registra log (usando enum válido), insere alerta na tabela alerta (se Anormal/Crítico),
-    e envia Slack.
-    """
     tipo = tipo.strip().upper()
 
     id_parametro = obter_id_parametro(tipo, ID_MAQUINA)

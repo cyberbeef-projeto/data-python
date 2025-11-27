@@ -14,9 +14,10 @@ DB_CONFIG = {
 }
 
 ID_MAQUINA = 1
-INTERVALO = 5  # segundos
+INTERVALO = 5
+TOLERANCIA = 3 
 
-SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/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"
+SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/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"
 
 LIMITE_ALERTA = {
     "CPU": 80,
@@ -24,13 +25,20 @@ LIMITE_ALERTA = {
     "DISCO": 70
 }
 
-TIPOS_VALIDOS = {"CPU", "RAM", "DISCO", "REDE"} 
+TIPOS_VALIDOS = {"CPU", "RAM", "DISCO", "REDE"}
 
 MAPA_PARAMETROS_FALLBACK = {
     "CPU": 1,
     "RAM": 2,
     "DISCO": 3
 }
+
+CONTADORES = {
+    "CPU": 0,
+    "RAM": 0,
+    "DISCO": 0
+}
+
 
 def enviar_slack(mensagem: str):
     try:
@@ -39,10 +47,8 @@ def enviar_slack(mensagem: str):
             print(f"Slack retornou HTTP {resposta.status_code}: {resposta.text}")
         else:
             print("Mensagem enviada ao Slack.")
-    except requests.exceptions.RequestException as e:
-        print(f"Erro ao enviar Slack (network/timeout): {e}")
     except Exception as e:
-        print(f"Erro inesperado ao enviar Slack: {e}")
+        print(f"Erro ao enviar Slack: {e}")
 
 
 def conectar():
@@ -56,7 +62,6 @@ def conectar():
 def registrar_log(id_maquina, tipo_log_db, mensagem):
     db = conectar()
     if db is None:
-        print("Impossível registrar log: sem conexão com DB.")
         return
 
     try:
@@ -80,7 +85,6 @@ def obter_id_parametro(tipo, id_maquina):
     tipo = tipo.strip().upper()
     db = conectar()
     if db is None:
-        print("Sem conexão ao DB para obter idParametro -> usando fallback se existir.")
         return MAPA_PARAMETROS_FALLBACK.get(tipo)
 
     try:
@@ -91,14 +95,11 @@ def obter_id_parametro(tipo, id_maquina):
             LIMIT 1
         """, (tipo, id_maquina))
         row = cursor.fetchone()
-        if row:
-            return row[0]
-        else:
-            # fallback
-            return MAPA_PARAMETROS_FALLBACK.get(tipo)
-    except Error as e:
-        print(f"Erro ao obter idParametro: {e} -> usando fallback se existir.")
+        return row[0] if row else MAPA_PARAMETROS_FALLBACK.get(tipo)
+
+    except Error:
         return MAPA_PARAMETROS_FALLBACK.get(tipo)
+
     finally:
         try:
             cursor.close()
@@ -111,7 +112,6 @@ def obter_ou_criar_componente(tipo, unidade, id_maquina):
     tipo = tipo.strip().upper()
 
     if tipo not in TIPOS_VALIDOS:
-        print(f"ERRO: Tipo de componente inválido enviado: '{tipo}'")
         return None
 
     db = conectar()
@@ -149,9 +149,6 @@ def obter_ou_criar_componente(tipo, unidade, id_maquina):
 
 
 def inserir_leitura(id_componente, id_maquina, valor, tipo, unidade):
-    """
-    Insere leitura e retorna idLeitura recém-criado (ou None em caso de erro).
-    """
     db = conectar()
     if db is None:
         return None
@@ -186,7 +183,6 @@ def inserir_leitura(id_componente, id_maquina, valor, tipo, unidade):
 def registrar_alerta(id_leitura, id_componente, id_maquina, id_parametro, descricao):
     db = conectar()
     if db is None:
-        print("Não foi possível registrar alerta: sem conexão DB.")
         return False
 
     try:
@@ -198,9 +194,11 @@ def registrar_alerta(id_leitura, id_componente, id_maquina, id_parametro, descri
         db.commit()
         print(f"Alerta registrado no BD: {descricao} (idLeitura={id_leitura})")
         return True
+
     except Error as e:
         print(f"Erro ao registrar alerta: {e}")
         return False
+
     finally:
         try:
             cursor.close()
@@ -224,7 +222,7 @@ def capturar_metricas():
 def classificar_valor(tipo, valor):
     if valor >= LIMITE_ALERTA[tipo]:
         return "Crítico", "CRITICO"
-    else:                                # tudo abaixo vira anormal
+    else:
         return "Anormal", "ANORMAL"
 
 
@@ -232,26 +230,44 @@ def verificar_e_tratar_alerta(tipo, valor, id_leitura, id_componente):
     tipo = tipo.strip().upper()
 
     id_parametro = obter_id_parametro(tipo, ID_MAQUINA)
-
     classificacao_texto, nivel_log_db = classificar_valor(tipo, valor)
 
-    mensagem_curta = f"{tipo} = {valor:.2f}% -> {classificacao_texto}"
+    mensagem_log = f"{tipo} = {valor:.2f}% -> {classificacao_texto}"
+    registrar_log(ID_MAQUINA, nivel_log_db, mensagem_log)
 
-    registrar_log(ID_MAQUINA, nivel_log_db, mensagem_curta)
+    global CONTADORES
 
-    if classificacao_texto in ("Anormal", "Crítico"):
-        descricao = f"{classificacao_texto} — {tipo} atingiu {valor:.2f}%"
-        sucesso_alerta = registrar_alerta(id_leitura, id_componente, ID_MAQUINA, id_parametro, descricao)
+    if valor < LIMITE_ALERTA[tipo]:
+        CONTADORES[tipo] = 0
+        return
 
-        if sucesso_alerta:
-            if classificacao_texto == "Crítico":
-                enviar_slack(f":rotating_light: CRÍTICO — {descricao}")
-            else:
-                enviar_slack(f":warning: AVISO — {descricao}")
+    CONTADORES[tipo] += 1
+
+    print(f"{tipo}: {CONTADORES[tipo]}/{TOLERANCIA} leituras acima do limite")
+
+    if CONTADORES[tipo] < TOLERANCIA:
+        return
+
+    descricao_alerta_bd = classificacao_texto
+
+    sucesso_alerta = registrar_alerta(
+        id_leitura,
+        id_componente,
+        ID_MAQUINA,
+        id_parametro,
+        descricao_alerta_bd
+    )
+
+    if sucesso_alerta:
+        msg_slack = f"{classificacao_texto} — {tipo} atingiu {valor:.2f}%"
+
+        if classificacao_texto == "Crítico":
+            enviar_slack(f":rotating_light: CRÍTICO — {msg_slack}")
         else:
-            print("Alerta não registrado no BD; Slack não será notificado para evitar mensagens inconsistentes.")
-    else:
-        pass
+            enviar_slack(f":warning: AVISO — {msg_slack}")
+
+    CONTADORES[tipo] = 0
+
 
 def iniciar_monitoramento():
     print("Iniciando monitoramento em tempo real... (Ctrl + C para parar)\n")
@@ -259,8 +275,6 @@ def iniciar_monitoramento():
         metricas = capturar_metricas()
 
         for (tipo, unidade), valor in metricas.items():
-            tipo = tipo.strip().upper()
-
             id_comp = obter_ou_criar_componente(tipo, unidade, ID_MAQUINA)
 
             if id_comp:
@@ -270,6 +284,7 @@ def iniciar_monitoramento():
                     verificar_e_tratar_alerta(tipo, valor, id_leitura, id_comp)
 
         time.sleep(INTERVALO)
+
 
 if __name__ == "__main__":
     iniciar_monitoramento()

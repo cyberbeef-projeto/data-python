@@ -17,7 +17,7 @@ ID_MAQUINA = 1
 INTERVALO = 5
 TOLERANCIA = 3 
 
-SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/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"
+SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/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"
 
 LIMITE_ALERTA = {
     "CPU": 80,
@@ -288,4 +288,5 @@ def iniciar_monitoramento():
 
 if __name__ == "__main__":
     iniciar_monitoramento()
+
 

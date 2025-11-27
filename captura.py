@@ -17,7 +17,7 @@ ID_MAQUINA = 1
 INTERVALO = 5
 TOLERANCIA = 3 
 
-SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/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"
+SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/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"
 
 LIMITE_ALERTA = {
     "CPU": 80,
@@ -221,7 +221,7 @@ def capturar_metricas():
 
 def classificar_valor(tipo, valor):
     if valor >= LIMITE_ALERTA[tipo]:
-        return "Crítico", "CRITICO"
+        return "Critico", "CRITICO"
     else:
         return "Anormal", "ANORMAL"
 
@@ -261,7 +261,7 @@ def verificar_e_tratar_alerta(tipo, valor, id_leitura, id_componente):
     if sucesso_alerta:
         msg_slack = f"{classificacao_texto} — {tipo} atingiu {valor:.2f}%"
 
-        if classificacao_texto == "Crítico":
+        if classificacao_texto == "Critico":
             enviar_slack(f":rotating_light: CRÍTICO — {msg_slack}")
         else:
             enviar_slack(f":warning: AVISO — {msg_slack}")

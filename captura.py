@@ -6,9 +6,9 @@ import time
 import requests
 
 DB_CONFIG = {
-    'host': 'localhost',
-    'user': 'aluno',
-    'password': 'sptech',
+    'host': '44.214.19.72',
+    'user': 'root',
+    'password': 'urubu100',
     'database': 'cyberbeef',
     'port': 3306
 }
@@ -288,3 +288,4 @@ def iniciar_monitoramento():
 
 if __name__ == "__main__":
     iniciar_monitoramento()
+
